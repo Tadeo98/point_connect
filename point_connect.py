@@ -24,13 +24,18 @@ keep_point_crs = 0 #vystupna vrstva ma suradnicovy system ako vstupna bodova, an
 EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
 
 ## PREMENNE
-include_features = ('OBJ','obj','Obj')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
-exclude_features = ('VB','kera','FTG')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
+include_features = ('OBJ','obj','Obj','H')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
+exclude_features = ('VB','kera','FTG','SHL')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
 code_position = 5   #cislo atributu s kodmi bodov podla poradia
 
 
 #############################################################################
 ## VYPOCET
+
+#uistenie sa, ze v pripade polygonov je nastavene uzavretie linie
+if feature_type == 1:
+    line_ring = 1
+
 
 # import bodovej vrstvy
 point_ds = ogr.Open(point_layer_path, 0) #1 = editing, 0 = read only. Datasource
@@ -101,6 +106,17 @@ for point_number in range(0,point_count):
 
         #rozpoznanie posledneho bodu prvku
         if point_code != point_layer.GetFeature(point_number+1).GetField(code_position-1):
+            #vytvorenie linie v pripade 
+            if feature_point_count == 2 and line_ring == 1:
+                print("Prvok ", point_code, " pozostava len z 2 bodov. Uzavrety prvok vytvoreny nebol.")
+                feature_ring = None
+                feature_point_count = 0
+                continue
+            if feature_point_count == 1:
+                print("Prvok ", point_code, " pozostava len z 1 bodu. Prvok vytvoreny nebol.")
+                feature_ring = None
+                feature_point_count = 0
+                continue
 
             #uzavretie ring
             if line_ring == 1:
