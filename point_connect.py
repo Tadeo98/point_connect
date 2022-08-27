@@ -17,14 +17,14 @@ output_folder = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\script_outds
 output_file = r"connected_points"   #nazov vystupneho suboru
 
 ## NASTAVENIA
-output_type = 1 #typ vysledku, 0 = linia, 1 = polygon
+feature_type = 1 #typ vysledku, 0 = linia, 1 = polygon
 line_ring = 1 #uzavretie linie, 1 = ano, 0 = nie (nepouzitelne pri polygone)
 feature_description = 1 #precitanie kodu bodu a jeho pridelenie vytvorenemu prvku, 1 = ano, 0 = nie
 keep_point_crs = 0 #vystupna vrstva ma suradnicovy system ako vstupna bodova, ano = 1, nie, nastavim EPSG noveho SS = 0
 EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
 
 ## PREMENNE
-include_features = ('OBJ','obj')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
+include_features = ('OBJ','obj','Obj')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
 exclude_features = ('VB','kera','FTG')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
 code_position = 5   #cislo atributu s kodmi bodov podla poradia
 
@@ -40,11 +40,25 @@ point_layer = point_ds.GetLayer()
 point_count = point_layer.GetFeatureCount()
 
 
-# vytvorenie novej geometrie
-feature_ring = ogr.Geometry(ogr.wkbLinearRing)
+#definicia vystupnej vrstvy, zdroja, CRS
+driver = ogr.GetDriverByName("ESRI Shapefile")
+outds = driver.CreateDataSource(output_folder + "\\" + output_file + ".shp")
+
+# definicia referencneho systemu
+srs = osr.SpatialReference()
+if keep_point_crs == 0:
+    srs.ImportFromEPSG(EPSG)    
+elif keep_point_crs == 1:
+    srs = point_layer.GetSpatialRef()
+else:
+    print("Zle nastavena hodnota keep_point_crs.")
+    throwshed_outds = None
+    exit()
+outlayer = outds.CreateLayer(output_file, srs)
+
 
 #poradie bodu v linii/polygone
-feature_point_count = 1
+feature_point_count = 0
 #cyklus citania atributov kazdeho bodu
 for point_number in range(0,point_count):
     # ziskanie konkretneho bodu
@@ -69,51 +83,47 @@ for point_number in range(0,point_count):
             exclude_count += 1
 
     #podla poziadaviek sa vyhodnoti bod za vhodny na cerpanie suradnic
-    if include_count > 0 and exclude_count == 0:
+    if exclude_count == 0 and include_count > 0 or include_features == ():
+        feature_point_count += 1    #pocitanie poradia bodu v jednom prvku
+        # vytvorenie novej geometrie
+        if feature_point_count == 1:
+            if feature_type == 0:
+                feature_ring = ogr.Geometry(ogr.wkbLineString)  #pre liniu
+            elif feature_type == 1:
+                feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
+            
         #priradenie suradnice
         feature_ring.AddPoint(X_coor_point, Y_coor_point)
         #ulozenie suradnice prveho bodu pre neskorsie uzavretie
         if line_ring == 1 and feature_point_count == 1:
             end_ring_X = X_coor_point
             end_ring_Y = Y_coor_point
-        feature_point_count += 1
+
+        #rozpoznanie posledneho bodu prvku
         if point_code != point_layer.GetFeature(point_number+1).GetField(code_position-1):
-            feature_ring.AddPoint(end_ring_X, end_ring_Y)
-            feature_point_count = 1
-    
 
+            #uzavretie ring
+            if line_ring == 1:
+                feature_ring.AddPoint(end_ring_X, end_ring_Y)
+            # vytvorenie linie
+            if feature_type == 0:
+                # pridanie polygonu do feature a jeho ulozenie do vystupnej vrstvy
+                feature = ogr.Feature(outlayer.GetLayerDefn())
+                feature.SetGeometry(feature_ring)
+                outlayer.CreateFeature(feature)
+                feature_ring = feature = None
+            
+            # vytvorenie polygonu
+            if feature_type == 1:
+                feature_polygon = ogr.Geometry(ogr.wkbPolygon)
+                feature_polygon.AddGeometry(feature_ring)
+                # pridanie polygonu do feature a jeho ulozenie do vystupnej vrstvy
+                feature = ogr.Feature(outlayer.GetLayerDefn())
+                feature.SetGeometry(feature_polygon)
+                outlayer.CreateFeature(feature)
+                feature_polygon = feature = None
+            feature_point_count = 0
 
-# # vytvorenie linie
-# if output_type == 0:
-#     feature_polygon = ogr.Geometry(ogr.wkbPolygon)
-#     feature_polygon.AddGeometry(feature_ring)
-
-# vytvorenie polygonu
-if output_type == 1:
-    feature_polygon = ogr.Geometry(ogr.wkbPolygon)
-    feature_polygon.AddGeometry(feature_ring)
-
-
-# ulozenie polygonu do vrstvy
-driver = ogr.GetDriverByName("ESRI Shapefile")
-outds = driver.CreateDataSource(output_folder + "\\" + output_file + ".shp")
-
-# definicia referencneho systemu
-srs = osr.SpatialReference()
-if keep_point_crs == 0:
-    srs.ImportFromEPSG(EPSG)    
-elif keep_point_crs == 1:
-    srs = point_layer.GetSpatialRef()
-else:
-    print("Zle nastavena hodnota keep_point_crs.")
-    throwshed_outds = None
-    exit()
-outlayer = outds.CreateLayer(output_file, srs)
-
-# pridanie polygonu do feature a jeho ulozenie do vystupnej vrstvy
-feature = ogr.Feature(outlayer.GetLayerDefn())
-feature.SetGeometry(feature_polygon)
-outlayer.CreateFeature(feature)
 
 #zavretie suboru
-outds = outlayer = line_feature = None
+outds = outlayer = None
