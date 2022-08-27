@@ -27,6 +27,7 @@ EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
 include_features = ('OBJ','obj','Obj','H')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
 exclude_features = ('VB','kera','FTG','SHL')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
 code_position = 5   #cislo atributu s kodmi bodov podla poradia
+new_field_name = "Kod"  #nazov noveho pola s popisom/kodom prvku
 
 
 #############################################################################
@@ -60,6 +61,11 @@ else:
     throwshed_outds = None
     exit()
 outlayer = outds.CreateLayer(output_file, srs)
+
+#vytvorenie noveho atributoveho pola s popisom prvku
+newfield = ogr.FieldDefn(new_field_name, ogr.OFTString)
+newfield.SetWidth(32)
+outlayer.CreateField(newfield)
 
 
 #poradie bodu v linii/polygone
@@ -127,6 +133,8 @@ for point_number in range(0,point_count):
                 feature = ogr.Feature(outlayer.GetLayerDefn())
                 feature.SetGeometry(feature_ring)
                 outlayer.CreateFeature(feature)
+                feature.SetField(new_field_name, point_code)   #priradenie kodu prvku
+                outlayer.SetFeature(feature)    #update prvku vo vrstve
                 feature_ring = feature = None
             
             # vytvorenie polygonu
@@ -137,6 +145,8 @@ for point_number in range(0,point_count):
                 feature = ogr.Feature(outlayer.GetLayerDefn())
                 feature.SetGeometry(feature_polygon)
                 outlayer.CreateFeature(feature)
+                feature.SetField(new_field_name, point_code)   #priradenie kodu prvku
+                outlayer.SetFeature(feature)    #update prvku vo vrstve
                 feature_polygon = feature = None
             feature_point_count = 0
 
