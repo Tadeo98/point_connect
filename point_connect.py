@@ -22,7 +22,8 @@ line_ring = 1 #uzavretie linie, 1 = ano, 0 = nie (nepouzitelne pri polygone)
 feature_description = 1 #precitanie kodu bodu a jeho pridelenie vytvorenemu prvku, 1 = ano, 0 = nie
 keep_point_crs = 0 #vystupna vrstva ma suradnicovy system ako vstupna bodova, ano = 1, nie, nastavim EPSG noveho SS = 0
 EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
-duplicite_feature = 2   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky duplicitne prvky, 1 = ponechanie iba prvych vyhodnotenych duplicitnych prvkov, 2 = nahradit skorsie vyhodnotene duplicitne prvky neskorsimi
+duplicite_feature = 0   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky duplicitne prvky, 1 = ponechanie iba prvych vyhodnotenych duplicitnych prvkov, 2 = nahradit skorsie vyhodnotene duplicitne prvky neskorsimi
+use_point_heights = 0   #zakomponovanie vysok bodov do prvkov
 
 ## PREMENNE
 include_features = ('OBJ','obj','Obj','H')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
@@ -74,6 +75,8 @@ code_register = []
 #poradie bodu v linii/polygone
 feature_point_count = 0
 
+print("\nKONTROLA POCTU BODOV VYTVARANYCH PRVKOV")
+warn_count = 0
 #cyklus citania atributov kazdeho bodu
 for point_number in range(0,point_count):
     # ziskanie konkretneho bodu
@@ -113,17 +116,18 @@ for point_number in range(0,point_count):
         if line_ring == 1 and feature_point_count == 1:
             end_ring_X = X_coor_point
             end_ring_Y = Y_coor_point
-
-
+        
         #rozpoznanie posledneho bodu prvku
         if point_code != point_layer.GetFeature(point_number+1).GetField(code_position-1):
             #kontrola poctu bodov pre novovytvarane prvky
             if feature_point_count == 2 and line_ring == 1:
+                warn_count += 1
                 print("Prvok ", point_code, " pozostava len z 2 bodov. Uzavrety prvok vytvoreny nebol.")
                 feature_ring = None
                 feature_point_count = 0
                 continue
             if feature_point_count == 1:
+                warn_count += 1
                 print("Prvok ", point_code, " pozostava len z 1 bodu. Prvok vytvoreny nebol.")
                 feature_ring = None
                 feature_point_count = 0
@@ -159,9 +163,14 @@ for point_number in range(0,point_count):
                     outlayer.SetFeature(feature)    #update prvku vo vrstve
                 feature_polygon = feature = None
             feature_point_count = 0
+if warn_count == 0:
+    print("Pocet bodov vsetkych prvkov OK.")
+print("\n")
 
 
-#DUPLICITA
+#KONTROLA DUPLICITY SPOJENYCH PRVKOV
+print("KONTROLA DUPLICITY SPOJENYCH PRVKOV")
+warn_count = 0
 #spocitanie prvkov s rovnakym kodom a vytvorenie matice s nazvami kodov a ich poctom (opakujuce sa)
 codes_count = [code_register,[]]
 for code in code_register:
@@ -174,6 +183,7 @@ if duplicite_feature == 0:
     repeating_codes = []
     for code in codes_count[0]:
         if codes_count[1][i] > 1:
+            warn_count += 1
             if code in repeating_codes: #kotrola ci uz kod nebol spomenuty ako duplicitny (inak by sa spomenul tolkokrat, kolkokrat sa kod vyskytuje)
                 i += 1
                 continue
@@ -188,6 +198,7 @@ elif duplicite_feature == 1:
     #pridelenie hodnot vektoru
     for i in range(0,len(codes_count[1])):
         if codes_count[1][i] > 1:
+            warn_count += 1
             if codes_count[0][i] in not_first_time_codes[0]:
                 duplicite_rows.append(i)
             elif codes_count[0][i] not in not_first_time_codes[0]:
@@ -207,6 +218,7 @@ elif duplicite_feature == 2:
     #pridelenie hodnot vektoru
     for i in range(0,len(codes_count[1])):
         if codes_count[1][i] > 1:
+            warn_count += 1
             if codes_count[0][i] not in last_time_code[0]:
                 duplicite_rows.append(i)
                 first_time_codes.append(codes_count[0][i])
@@ -220,7 +232,49 @@ elif duplicite_feature == 2:
         outlayer.DeleteFeature(row)
     for i in range(0,len(last_time_code[0])): #vypisanie spravy o vymazanych duplicitnych prvkoch iba raz
         print("Skorsie duplicitne prvky s kodom", last_time_code[0][i],"boli vymazane", last_time_code[1][i]-1,"krat.")
+if warn_count == 0:
+    print("Ziadna duplicita.")
+print("\n")
 
+
+#KONTROLA GEOMETRIE SPOJENYCH PRVKOV
+print("KONTROLA GEOMETRIE SPOJENYCH PRVKOV")
+warn_count = 0
+for feature in outlayer:
+    geom = feature.GetGeometryRef()
+    if feature_type == 1:   #jednoduchsi pripad polygonov
+        buffer = geom.Buffer(0)
+    elif feature_type == 0:   #pri liniach treba urobit najprv polygon a az z neho buffer
+        if line_ring == 0: #pre pripad nastavenia neuzavretych linii, kde nie je mozna kontrola geometrie nizsim sposobom
+            warn_count += 1
+            print("Kontrola geometrie neuzavretych linii nemozna.")
+            break
+
+        #Cerpanie bodov z geometrie
+        wkt = geom.ExportToWkt()
+        wkt_edited = wkt.replace("LINESTRING (","")
+        wkt_edited2 = wkt_edited.replace(")","")
+        coor_list = list(wkt_edited2.split(","))
+        coor_list2 = []
+        for i in range(0,len(coor_list)):
+            coor_list2.append(coor_list[i].split(" "))
+        linear_ring = ogr.Geometry(ogr.wkbLinearRing)
+        for i in range(0,len(coor_list2)):
+            linear_ring.AddPoint(float(coor_list2[i][0]), float(coor_list2[i][1]), float(coor_list2[i][2]))
+        feature_polygon = ogr.Geometry(ogr.wkbPolygon)  #docasny polygon pre buffer
+        feature_polygon.AddGeometry(linear_ring)    #vlozenie ringu
+        feature2 = ogr.Feature(outlayer.GetLayerDefn())
+        feature2.SetGeometry(feature_polygon)
+        geom_polygon = feature2.GetGeometryRef()
+        buffer = geom_polygon.Buffer(0) #buffer prijme iba polygon, nie liniu, preto transformacia LINESTRING na LINEARRING a potom na POLYGON
+        feature2 = linear_ring = feature_polygon = None
+    
+    #kontrola pozostava z porovnania plochy prvku a plochy bufferu s nastavenou vzdialenostou 0
+    if abs(geom.GetArea() - buffer.GetArea()) > 0.000001:   #pri liniach vyjde aj pri spravnej geometrii trocha rozdielna plocha buffera, preto tolerancia 1 mm2
+        print("Geometria prvku s kodom", feature.GetField(new_field_name), "nie je v poriadku. Je odporucana kontrola.")
+        warn_count += 1
+if warn_count == 0:
+    print("Geometria prvkov OK.")
 
 #zavretie suboru
 outds = outlayer = None
