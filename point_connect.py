@@ -12,7 +12,7 @@ from osgeo import gdal, ogr, osr
 
 #######################################################################
 ## CESTY
-point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points.shp"   #cesta k bodovej vrstve
+point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points2.shp"   #cesta k bodovej vrstve
 output_folder = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\script_outds"  #cesta k priecinku, kde sa ulozi vysledok
 output_file = r"connected_points"   #nazov vystupneho suboru
 
@@ -22,10 +22,11 @@ line_ring = 1 #uzavretie linie, 1 = ano, 0 = nie (nepouzitelne pri polygone)
 feature_description = 1 #precitanie kodu bodu a jeho pridelenie vytvorenemu prvku, 1 = ano, 0 = nie
 keep_point_crs = 0 #vystupna vrstva ma suradnicovy system ako vstupna bodova, ano = 1, nie, nastavim EPSG noveho SS = 0
 EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
+duplicite_feature = 2   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky duplicitne prvky, 1 = ponechanie iba prvych vyhodnotenych duplicitnych prvkov, 2 = nahradit skorsie vyhodnotene duplicitne prvky neskorsimi
 
 ## PREMENNE
 include_features = ('OBJ','obj','Obj','H')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
-exclude_features = ('VB','kera','FTG','SHL')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
+exclude_features = ('VB','kera','FTG','SHL','PROF')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
 code_position = 5   #cislo atributu s kodmi bodov podla poradia
 new_field_name = "Kod"  #nazov noveho pola s popisom/kodom prvku
 
@@ -68,9 +69,11 @@ if feature_description == 1:
     new_field.SetWidth(32)
     outlayer.CreateField(new_field)
 
-
+#zoznam kodov pre kontrolu duplicity
+code_register = []
 #poradie bodu v linii/polygone
 feature_point_count = 0
+
 #cyklus citania atributov kazdeho bodu
 for point_number in range(0,point_count):
     # ziskanie konkretneho bodu
@@ -111,9 +114,38 @@ for point_number in range(0,point_count):
             end_ring_X = X_coor_point
             end_ring_Y = Y_coor_point
 
+
         #rozpoznanie posledneho bodu prvku
         if point_code != point_layer.GetFeature(point_number+1).GetField(code_position-1):
-            #vytvorenie linie v pripade 
+            code_once = "empty"
+            #porovnavanie aktualnych a zapisanych kodov kvoli duplicite
+            if code_register != []:
+                code_count = 0  #koeficient umiestnenia aktualneho kodu v zozname
+                for code in code_register:
+                    if point_code == code:
+                        if duplicite_feature == 0:
+                            if point_code == code_once: #ked sa tretikrat a viac vyskytne kod, sprava sa zobrazi iba raz, nie 2a viackrat k tomu istemu
+                                break
+                            print("Prvok s kodom ", point_code, " je duplicitny.")  #len sa oznami duplicita, ktora sa uklada
+                            code_once = point_code
+                        elif duplicite_feature == 1:
+                            print("Duplicitny prvok s kodom ", point_code, " bol vytvoreny v skorsej podobe.")  #nova duplicita sa neulozi, ponecha sa povodna
+                            feature_ring = None
+                            feature_point_count = 0
+                            continue
+                        elif duplicite_feature == 2:
+                            print("Duplicitny prvok s kodom ", point_code, " bol vytvoreny v poslednej podobe.")  #nova duplicita sa ulozi, povodna je nahradena
+                            #feature = outlayer.GetFeature(code_count)
+                            outlayer.DeleteFeature(code_count)
+                    code_count += 1
+
+            #skok na novy cyklus v pripade ze bola zistena duplicita a ponechavaju sa povodne prvky
+            if feature_ring == None and duplicite_feature == 1:
+                continue
+
+            #pridanie kodu do zoznamu
+            code_register.append(point_code)
+            #kontrola poctu bodov pre novovytvarane prvky
             if feature_point_count == 2 and line_ring == 1:
                 print("Prvok ", point_code, " pozostava len z 2 bodov. Uzavrety prvok vytvoreny nebol.")
                 feature_ring = None
