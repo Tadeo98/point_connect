@@ -63,9 +63,10 @@ else:
 outlayer = outds.CreateLayer(output_file, srs)
 
 #vytvorenie noveho atributoveho pola s popisom prvku
-newfield = ogr.FieldDefn(new_field_name, ogr.OFTString)
-newfield.SetWidth(32)
-outlayer.CreateField(newfield)
+if feature_description == 1:
+    new_field = ogr.FieldDefn(new_field_name, ogr.OFTString)
+    new_field.SetWidth(32)
+    outlayer.CreateField(new_field)
 
 
 #poradie bodu v linii/polygone
@@ -133,8 +134,9 @@ for point_number in range(0,point_count):
                 feature = ogr.Feature(outlayer.GetLayerDefn())
                 feature.SetGeometry(feature_ring)
                 outlayer.CreateFeature(feature)
-                feature.SetField(new_field_name, point_code)   #priradenie kodu prvku
-                outlayer.SetFeature(feature)    #update prvku vo vrstve
+                if feature_description == 1:
+                    feature.SetField(new_field_name, point_code)   #priradenie kodu prvku
+                    outlayer.SetFeature(feature)    #update prvku vo vrstve
                 feature_ring = feature = None
             
             # vytvorenie polygonu
@@ -145,8 +147,9 @@ for point_number in range(0,point_count):
                 feature = ogr.Feature(outlayer.GetLayerDefn())
                 feature.SetGeometry(feature_polygon)
                 outlayer.CreateFeature(feature)
-                feature.SetField(new_field_name, point_code)   #priradenie kodu prvku
-                outlayer.SetFeature(feature)    #update prvku vo vrstve
+                if feature_description == 1:
+                    feature.SetField(new_field_name, point_code)   #priradenie kodu prvku
+                    outlayer.SetFeature(feature)    #update prvku vo vrstve
                 feature_polygon = feature = None
             feature_point_count = 0
 
