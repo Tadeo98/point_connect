@@ -117,34 +117,6 @@ for point_number in range(0,point_count):
 
         #rozpoznanie posledneho bodu prvku
         if point_code != point_layer.GetFeature(point_number+1).GetField(code_position-1):
-            code_once = "empty"
-            #porovnavanie aktualnych a zapisanych kodov kvoli duplicite
-            if code_register != []:
-                code_count = 0  #koeficient umiestnenia aktualneho kodu v zozname
-                for code in code_register:
-                    if point_code == code:
-                        if duplicite_feature == 0:
-                            if point_code == code_once: #ked sa tretikrat a viac vyskytne kod, sprava sa zobrazi iba raz, nie 2a viackrat k tomu istemu
-                                break
-                            print("Prvok s kodom ", point_code, " je duplicitny.")  #len sa oznami duplicita, ktora sa uklada
-                            code_once = point_code
-                        elif duplicite_feature == 1:
-                            print("Duplicitny prvok s kodom ", point_code, " bol vytvoreny v skorsej podobe.")  #nova duplicita sa neulozi, ponecha sa povodna
-                            feature_ring = None
-                            feature_point_count = 0
-                            continue
-                        elif duplicite_feature == 2:
-                            print("Duplicitny prvok s kodom ", point_code, " bol vytvoreny v poslednej podobe.")  #nova duplicita sa ulozi, povodna je nahradena
-                            #feature = outlayer.GetFeature(code_count)
-                            outlayer.DeleteFeature(code_count)
-                    code_count += 1
-
-            #skok na novy cyklus v pripade ze bola zistena duplicita a ponechavaju sa povodne prvky
-            if feature_ring == None and duplicite_feature == 1:
-                continue
-
-            #pridanie kodu do zoznamu
-            code_register.append(point_code)
             #kontrola poctu bodov pre novovytvarane prvky
             if feature_point_count == 2 and line_ring == 1:
                 print("Prvok ", point_code, " pozostava len z 2 bodov. Uzavrety prvok vytvoreny nebol.")
@@ -156,6 +128,9 @@ for point_number in range(0,point_count):
                 feature_ring = None
                 feature_point_count = 0
                 continue
+
+            #pridanie kodu do zoznamu
+            code_register.append(point_code)
 
             #uzavretie ring
             if line_ring == 1:
@@ -184,6 +159,67 @@ for point_number in range(0,point_count):
                     outlayer.SetFeature(feature)    #update prvku vo vrstve
                 feature_polygon = feature = None
             feature_point_count = 0
+
+
+#DUPLICITA
+#spocitanie prvkov s rovnakym kodom a vytvorenie matice s nazvami kodov a ich poctom (opakujuce sa)
+codes_count = [code_register,[]]
+for code in code_register:
+    codes_count[1].append(code_register.count(code))
+
+#Vysporiadanie sa s duplicitou
+#duplicita sa ponecha, no oznami sa pocet duplicit
+if duplicite_feature == 0:
+    i = 0
+    repeating_codes = []
+    for code in codes_count[0]:
+        if codes_count[1][i] > 1:
+            if code in repeating_codes: #kotrola ci uz kod nebol spomenuty ako duplicitny (inak by sa spomenul tolkokrat, kolkokrat sa kod vyskytuje)
+                i += 1
+                continue
+            print("Prvok s kodom", code, "sa vyskytuje", codes_count[1][i], "krat.")
+            repeating_codes.append(code)
+        i += 1
+
+#Mazanie neskorsich duplicitnych prvkov
+elif duplicite_feature == 1:
+    not_first_time_codes = [[],[]]   #vektor so zoznamom kodov a vyskytov prvkov po prvom opakovani
+    duplicite_rows = [] #vektor s poradiami prvkov, ktore sa vymazu
+    #pridelenie hodnot vektoru
+    for i in range(0,len(codes_count[1])):
+        if codes_count[1][i] > 1:
+            if codes_count[0][i] in not_first_time_codes[0]:
+                duplicite_rows.append(i)
+            elif codes_count[0][i] not in not_first_time_codes[0]:
+                not_first_time_codes[0].append(codes_count[0][i])
+                not_first_time_codes[1].append(codes_count[1][i])
+    #mazanie prvkov
+    for row in duplicite_rows:
+        outlayer.DeleteFeature(row)
+    for i in range(0,len(not_first_time_codes[0])): #vypisanie spravy o vymazanych duplicitnych prvkoch iba raz
+        print("Neskorsie duplicitne prvky s kodom", not_first_time_codes[0][i],"boli vymazane", not_first_time_codes[1][i]-1,"krat.")
+
+#Mazanie skorsich duplicitnych prvkov a ponechanie posledneho
+elif duplicite_feature == 2:
+    last_time_code = [[],[]]   #vektor so zoznamom kodov a vyskytov prvkov pred poslednym opakovanim
+    first_time_codes = []
+    duplicite_rows = [] #vektor s poradiami prvkov, ktore sa vymazu
+    #pridelenie hodnot vektoru
+    for i in range(0,len(codes_count[1])):
+        if codes_count[1][i] > 1:
+            if codes_count[0][i] not in last_time_code[0]:
+                duplicite_rows.append(i)
+                first_time_codes.append(codes_count[0][i])
+                if codes_count[1][i] == (first_time_codes.count(codes_count[0][i])+1):
+                    last_time_code[0].append(codes_count[0][i])
+                    last_time_code[1].append(codes_count[1][i])
+            else:
+                continue
+    #mazanie prvkov
+    for row in duplicite_rows:
+        outlayer.DeleteFeature(row)
+    for i in range(0,len(last_time_code[0])): #vypisanie spravy o vymazanych duplicitnych prvkoch iba raz
+        print("Skorsie duplicitne prvky s kodom", last_time_code[0][i],"boli vymazane", last_time_code[1][i]-1,"krat.")
 
 
 #zavretie suboru
