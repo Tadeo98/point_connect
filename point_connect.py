@@ -23,7 +23,7 @@ feature_description = 1 #precitanie kodu bodu a jeho pridelenie vytvorenemu prvk
 keep_point_crs = 0 #vystupna vrstva ma suradnicovy system ako vstupna bodova, ano = 1, nie, nastavim EPSG noveho SS = 0
 EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
 duplicite_feature = 0   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky duplicitne prvky, 1 = ponechanie iba prvych vyhodnotenych duplicitnych prvkov, 2 = nahradit skorsie vyhodnotene duplicitne prvky neskorsimi
-use_point_heights = 0   #zakomponovanie vysok bodov do prvkov
+use_point_heights = 1   #zakomponovanie vysok bodov do prvkov, 0 = nie, 1 = ano
 
 ## PREMENNE
 include_features = ('OBJ','obj','Obj','H')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
@@ -85,6 +85,10 @@ for point_number in range(0,point_count):
     point_geom = point_feature.GetGeometryRef()
     X_coor_point = point_geom.GetX()
     Y_coor_point = point_geom.GetY()
+    if use_point_heights == 0:  #bez pouzitia vysok automaticke definovanie nulovej vysky
+        Z_coor_point = 0.0
+    if use_point_heights == 1:  #zakomponovanie vysok
+        Z_coor_point = point_geom.GetZ()
     #ziskanie kodu bodu
     point_code = point_feature.GetField(code_position-1)
     include_count = 0
@@ -111,11 +115,12 @@ for point_number in range(0,point_count):
                 feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
             
         #priradenie suradnice
-        feature_ring.AddPoint(X_coor_point, Y_coor_point)
+        feature_ring.AddPoint(X_coor_point, Y_coor_point, Z_coor_point)
         #ulozenie suradnice prveho bodu pre neskorsie uzavretie
         if line_ring == 1 and feature_point_count == 1:
             end_ring_X = X_coor_point
             end_ring_Y = Y_coor_point
+            end_ring_Z = Z_coor_point
         
         #rozpoznanie posledneho bodu prvku
         if point_code != point_layer.GetFeature(point_number+1).GetField(code_position-1):
@@ -138,7 +143,7 @@ for point_number in range(0,point_count):
 
             #uzavretie ring
             if line_ring == 1:
-                feature_ring.AddPoint(end_ring_X, end_ring_Y)
+                feature_ring.AddPoint(end_ring_X, end_ring_Y, end_ring_Z)
             # vytvorenie linie
             if feature_type == 0:
                 # pridanie polygonu do feature a jeho ulozenie do vystupnej vrstvy
