@@ -14,7 +14,7 @@ from osgeo import gdal, ogr, osr
 ## CESTY
 point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points_fixed.shp"   #cesta k bodovej vrstve
 output_folder = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\script_outds"  #cesta k priecinku, kde sa ulozi vysledok
-output_file = r"L1_objekty_hroby_update"   #nazov vystupneho suboru
+output_file = r"L1_objekty_hroby_update2"   #nazov vystupneho suboru
 line_file_suffix = r"_lines"    #pripona suboru so zvlast liniovymi prvkami
 point_file_suffix = r"_points"  #pripona suboru so zvlast bodovymi prvkami
 
@@ -27,7 +27,7 @@ EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
 duplicite_feature = 0   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky duplicitne prvky, 1 = ponechanie iba prvych vyhodnotenych duplicitnych prvkov, 2 = nahradit skorsie vyhodnotene duplicitne prvky neskorsimi
 use_point_heights = 1   #zakomponovanie vysok bodov do prvkov, 0 = nie, 1 = ano
 save_lines = 1 #ulozit dvojbodove prvky do zvlast liniovej vrstvy, 1 = ano, 0 = nie
-save_points = 0 #ulozit jednobodove prvky do zvlast bodovej vrstvy, 1 = ano, 0 = nie
+save_points = 1 #ulozit jednobodove prvky do zvlast bodovej vrstvy, 1 = ano, 0 = nie
 
 ## PREMENNE
 include_features = ('OBJ','HROB')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe. Napr. ('OBJ','HROB','Obj','H')
@@ -183,10 +183,29 @@ for point_number in range(0,point_count):
 
             if feature_point_count == 1:
                 warn_count += 1
-                print("Prvok ", point_code, " pozostava len z 1 bodu. Prvok vytvoreny nebol.")
-                feature_ring = None
-                feature_point_count = 0
-                continue
+                if save_points == 1:    #v pripade ukladania bodovych prvkov do separe vrstvy vratenie sa na prvy bod prvku a ulozenie
+                    feature_ring = None
+                    #feature_ring = ogr.Geometry(ogr.wkbLinearRing)
+                    # ziskanie konkretneho bodu
+                    point_feature = point_layer.GetFeature(point_number)
+                    # ziskanie geometrie bodu, X a Y suradnice (odpovedajuce smeru a orientacii osi v QGISe)
+                    point_geom = point_feature.GetGeometryRef()
+                    # pridanie bodu do feature a jeho ulozenie do zvlast vystupnej vrstvy
+                    feature_points = ogr.Feature(outlayer_points.GetLayerDefn())
+                    feature_points.SetGeometry(point_geom)
+                    outlayer_points.CreateFeature(feature_points)
+                    if feature_description == 1:
+                        feature_points.SetField(new_field_name, point_code)   #priradenie kodu prvku
+                        outlayer_points.SetFeature(feature_points)    #update prvku vo vrstve
+                    print("Jednobodovy prvok s kodom", point_code, " bol ulozeny do zvlast bodovej vrstvy.")
+                    feature_points = None
+                    feature_point_count = 0
+                    continue
+                elif save_points == 0:
+                    print("Prvok ", point_code, " pozostava len z 1 bodu. Prvok vytvoreny nebol.")
+                    feature_ring = None
+                    feature_point_count = 0
+                    continue
 
             #pridanie kodu do zoznamu
             code_register.append(point_code)
