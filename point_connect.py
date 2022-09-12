@@ -98,7 +98,6 @@ feature_point_count = 0
 
 print("\nKONTROLA POCTU BODOV VYTVARANYCH PRVKOV")
 warn_count = 0
-create_line_feature = 0
 #cyklus citania atributov kazdeho bodu
 for point_number in range(0,point_count):
     # ziskanie konkretneho bodu
@@ -133,11 +132,8 @@ for point_number in range(0,point_count):
         if feature_point_count == 1:
             if feature_type == 0:
                 feature_ring = ogr.Geometry(ogr.wkbLineString)  #pre liniu
-            elif feature_type == 1 and create_line_feature == 0:
-                if create_line_feature == 0:
-                    feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
-                if create_line_feature == 1:
-                    feature_ring = ogr.Geometry(ogr.wkbLineString)  #pre 2bodovu liniu do zvlast vrstvy pri polygonoch
+            elif feature_type == 1:
+                feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
             
         #priradenie suradnice
         feature_ring.AddPoint(X_coor_point, Y_coor_point, Z_coor_point)
@@ -152,15 +148,22 @@ for point_number in range(0,point_count):
             #kontrola poctu bodov pre novovytvarane prvky
             if feature_point_count == 2 and line_ring == 1:
                 warn_count += 1
-                if save_lines == 1 and create_line_feature == 0:    #vratenie sa o 2 body, aby sa namiesto polygonu ulozili do linie
-                    point_number = point_number - 2
-                    create_line_feature = 1
+                if save_lines == 1:    #v pripade ukladania dvojbodovych linii do separe vrstvy vratenie sa na prvy bod prvku a ulozenie
                     feature_ring = None
-                    feature_point_count = 0
-                    continue
-                elif save_lines == 1 and create_line_feature == 1:  #linia sa zapise do novej liniovej vrstvy
-                    print("Dvojbodovy prvok s kodom", point_code, " bol ulozeny do zvlast liniovej vrstvy.")
-                    create_line_feature = 0
+                    feature_ring = ogr.Geometry(ogr.wkbLinearRing)
+                    for point_number_in_lines in (point_number-1,point_number):
+                        # ziskanie konkretneho bodu
+                        point_feature = point_layer.GetFeature(point_number_in_lines)
+                        # ziskanie geometrie bodu, X a Y suradnice (odpovedajuce smeru a orientacii osi v QGISe)
+                        point_geom = point_feature.GetGeometryRef()
+                        X_coor_point = point_geom.GetX()
+                        Y_coor_point = point_geom.GetY()
+                        if use_point_heights == 0:  #bez pouzitia vysok automaticke definovanie nulovej vysky
+                            Z_coor_point = 0.0
+                        if use_point_heights == 1:  #zakomponovanie vysok
+                            Z_coor_point = point_geom.GetZ()
+                        #priradenie suradnice
+                        feature_ring.AddPoint(X_coor_point, Y_coor_point, Z_coor_point)
                     # pridanie dvojbodovej linie do feature a jej ulozenie do zvlast vystupnej vrstvy
                     feature_lines = ogr.Feature(outlayer_lines.GetLayerDefn())
                     feature_lines.SetGeometry(feature_ring)
@@ -168,6 +171,7 @@ for point_number in range(0,point_count):
                     if feature_description == 1:
                         feature_lines.SetField(new_field_name, point_code)   #priradenie kodu prvku
                         outlayer_lines.SetFeature(feature_lines)    #update prvku vo vrstve
+                    print("Dvojbodovy prvok s kodom", point_code, " bol ulozeny do zvlast liniovej vrstvy.")
                     feature_ring = feature_lines = None
                     feature_point_count = 0
                     continue
