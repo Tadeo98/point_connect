@@ -12,9 +12,11 @@ from osgeo import gdal, ogr, osr
 
 #######################################################################
 ## CESTY
-point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points2.shp"   #cesta k bodovej vrstve
+point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points_fixed.shp"   #cesta k bodovej vrstve
 output_folder = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\script_outds"  #cesta k priecinku, kde sa ulozi vysledok
-output_file = r"connected_points"   #nazov vystupneho suboru
+output_file = r"L1_objekty_hroby_update"   #nazov vystupneho suboru
+line_file_suffix = r"_lines"    #pripona suboru so zvlast liniovymi prvkami
+point_file_suffix = r"_points"  #pripona suboru so zvlast bodovymi prvkami
 
 ## NASTAVENIA
 feature_type = 1 #typ vysledku, 0 = linia, 1 = polygon
@@ -24,10 +26,12 @@ keep_point_crs = 0 #vystupna vrstva ma suradnicovy system ako vstupna bodova, an
 EPSG = 5514 #EPSG kod (suradnicovy system) vystupnej vrstvy
 duplicite_feature = 0   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky duplicitne prvky, 1 = ponechanie iba prvych vyhodnotenych duplicitnych prvkov, 2 = nahradit skorsie vyhodnotene duplicitne prvky neskorsimi
 use_point_heights = 1   #zakomponovanie vysok bodov do prvkov, 0 = nie, 1 = ano
+save_lines = 1 #ulozit dvojbodove prvky do zvlast liniovej vrstvy, 1 = ano, 0 = nie
+save_points = 0 #ulozit jednobodove prvky do zvlast bodovej vrstvy, 1 = ano, 0 = nie
 
 ## PREMENNE
-include_features = ('OBJ','obj','Obj','H')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe
-exclude_features = ('VB','kera','FTG','SHL','PROF')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe
+include_features = ('OBJ','HROB')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe. Napr. ('OBJ','HROB','Obj','H')
+exclude_features = ('VB','kera','FTG','SHL','bronz','Foto','foto','rez','SON','Tele')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe. Napr. ('VB','kera','FTG','SHL','PROF')
 code_position = 5   #cislo atributu s kodmi bodov podla poradia
 new_field_name = "Kod"  #nazov noveho pola s popisom/kodom prvku
 
@@ -51,6 +55,13 @@ point_count = point_layer.GetFeatureCount()
 #definicia vystupnej vrstvy, zdroja, CRS
 driver = ogr.GetDriverByName("ESRI Shapefile")
 outds = driver.CreateDataSource(output_folder + "\\" + output_file + ".shp")
+#ak sa aj dvoj alebo jednobodove prvky ukladaju tak sa im vytvori vrstva
+if save_lines == 1:
+    driver_lines = ogr.GetDriverByName("ESRI Shapefile")
+    outds_lines = driver_lines.CreateDataSource(output_folder + "\\" + output_file + line_file_suffix + ".shp")
+if save_points == 1:
+    driver_points = ogr.GetDriverByName("ESRI Shapefile")
+    outds_points = driver_points.CreateDataSource(output_folder + "\\" + output_file + point_file_suffix + ".shp")
 
 # definicia referencneho systemu
 srs = osr.SpatialReference()
@@ -60,15 +71,25 @@ elif keep_point_crs == 1:
     srs = point_layer.GetSpatialRef()
 else:
     print("Zle nastavena hodnota keep_point_crs.")
-    throwshed_outds = None
     exit()
 outlayer = outds.CreateLayer(output_file, srs)
+
+#pre dvoj alebo jednobodove prvky
+if save_lines == 1:
+    outlayer_lines = outds_lines.CreateLayer(output_file + line_file_suffix, srs, ogr.wkbLineString)
+if save_points == 1:
+    outlayer_points = outds_points.CreateLayer(output_file + point_file_suffix, srs, ogr.wkbPoint)
 
 #vytvorenie noveho atributoveho pola s popisom prvku
 if feature_description == 1:
     new_field = ogr.FieldDefn(new_field_name, ogr.OFTString)
     new_field.SetWidth(32)
     outlayer.CreateField(new_field)
+    #aj pre bodovu vrstvu
+    if save_lines == 1:
+        outlayer_lines.CreateField(new_field)
+    if save_points == 1:
+        outlayer_points.CreateField(new_field)
 
 #zoznam kodov pre kontrolu duplicity
 code_register = []
@@ -77,6 +98,7 @@ feature_point_count = 0
 
 print("\nKONTROLA POCTU BODOV VYTVARANYCH PRVKOV")
 warn_count = 0
+create_line_feature = 0
 #cyklus citania atributov kazdeho bodu
 for point_number in range(0,point_count):
     # ziskanie konkretneho bodu
@@ -111,8 +133,11 @@ for point_number in range(0,point_count):
         if feature_point_count == 1:
             if feature_type == 0:
                 feature_ring = ogr.Geometry(ogr.wkbLineString)  #pre liniu
-            elif feature_type == 1:
-                feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
+            elif feature_type == 1 and create_line_feature == 0:
+                if create_line_feature == 0:
+                    feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
+                if create_line_feature == 1:
+                    feature_ring = ogr.Geometry(ogr.wkbLineString)  #pre 2bodovu liniu do zvlast vrstvy pri polygonoch
             
         #priradenie suradnice
         feature_ring.AddPoint(X_coor_point, Y_coor_point, Z_coor_point)
@@ -127,10 +152,31 @@ for point_number in range(0,point_count):
             #kontrola poctu bodov pre novovytvarane prvky
             if feature_point_count == 2 and line_ring == 1:
                 warn_count += 1
-                print("Prvok ", point_code, " pozostava len z 2 bodov. Uzavrety prvok vytvoreny nebol.")
-                feature_ring = None
-                feature_point_count = 0
-                continue
+                if save_lines == 1 and create_line_feature == 0:    #vratenie sa o 2 body, aby sa namiesto polygonu ulozili do linie
+                    point_number = point_number - 2
+                    create_line_feature = 1
+                    feature_ring = None
+                    feature_point_count = 0
+                    continue
+                elif save_lines == 1 and create_line_feature == 1:  #linia sa zapise do novej liniovej vrstvy
+                    print("Dvojbodovy prvok s kodom", point_code, " bol ulozeny do zvlast liniovej vrstvy.")
+                    create_line_feature = 0
+                    # pridanie dvojbodovej linie do feature a jej ulozenie do zvlast vystupnej vrstvy
+                    feature_lines = ogr.Feature(outlayer_lines.GetLayerDefn())
+                    feature_lines.SetGeometry(feature_ring)
+                    outlayer_lines.CreateFeature(feature_lines)
+                    if feature_description == 1:
+                        feature_lines.SetField(new_field_name, point_code)   #priradenie kodu prvku
+                        outlayer_lines.SetFeature(feature_lines)    #update prvku vo vrstve
+                    feature_ring = feature_lines = None
+                    feature_point_count = 0
+                    continue
+                elif save_lines == 0:   #pripad, kde sa neukladaju linie do zvlast vrstvy
+                    print("Prvok ", point_code, " pozostava len z 2 bodov. Uzavrety prvok vytvoreny nebol.")
+                    feature_ring = None
+                    feature_point_count = 0
+                    continue
+
             if feature_point_count == 1:
                 warn_count += 1
                 print("Prvok ", point_code, " pozostava len z 1 bodu. Prvok vytvoreny nebol.")
@@ -146,7 +192,7 @@ for point_number in range(0,point_count):
                 feature_ring.AddPoint(end_ring_X, end_ring_Y, end_ring_Z)
             # vytvorenie linie
             if feature_type == 0:
-                # pridanie polygonu do feature a jeho ulozenie do vystupnej vrstvy
+                # pridanie linie do feature a jej ulozenie do vystupnej vrstvy
                 feature = ogr.Feature(outlayer.GetLayerDefn())
                 feature.SetGeometry(feature_ring)
                 outlayer.CreateFeature(feature)
@@ -174,7 +220,7 @@ print("\n")
 
 
 #KONTROLA DUPLICITY SPOJENYCH PRVKOV
-print("KONTROLA DUPLICITY SPOJENYCH PRVKOV")
+print("KONTROLA DUPLICITY SPOJENYCH PRVKOV HLAVNEJ VRSTVY")
 warn_count = 0
 #spocitanie prvkov s rovnakym kodom a vytvorenie matice s nazvami kodov a ich poctom (opakujuce sa)
 codes_count = [code_register,[]]
@@ -243,7 +289,7 @@ print("\n")
 
 
 #KONTROLA GEOMETRIE SPOJENYCH PRVKOV
-print("KONTROLA GEOMETRIE SPOJENYCH PRVKOV")
+print("KONTROLA GEOMETRIE SPOJENYCH PRVKOV HLAVNEJ VRSTVY")
 warn_count = 0
 for feature in outlayer:
     geom = feature.GetGeometryRef()
@@ -282,4 +328,4 @@ if warn_count == 0:
     print("Geometria prvkov OK.")
 
 #zavretie suboru
-outds = outlayer = None
+outds = outds_lines = outds_points = outlayer = outlayer_lines = outlayer_points = None

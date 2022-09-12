@@ -1,0 +1,10 @@
+Test manuálneho spájania bodov:
+Trvanie: 1620 s
+Spojených bodov: 383
+Dĺžka spojenia bodu s iným vrátane selekcie bodov, nájdenia objektu, priradenia kódu...: 4,23s/bod.
+
+Výpočet času:
+Prvá hodina násobenie počtu bodov 4,23 s, druhá hodina taktisto a ponásobiť aj koeficientom 1,1 (pomalšie sa kliká po takej dobe), tretia hodina násobenie koeficientom 1,2, štvrtá 1,3 (piata už nie, akoby prestávka a zregenerovanie)
+Za každú nájdenú duplicitu +10 minút (cca toľko by mi trvalo vysomáriť sa z toho)
+Za každú zlú geometriu +10 minút.
+Nakoniec pripočítanie času, ktorý som reálne strávil prácou okolo.
