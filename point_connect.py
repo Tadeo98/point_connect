@@ -2,6 +2,7 @@
 ## POINT CONNECT ##
 #######################################################################
 
+
 import math
 import os
 
@@ -10,14 +11,75 @@ import numpy as np
 from matplotlib.style import use
 from osgeo import gdal, ogr, osr
 
+
 #######################################################################
-## CESTY
+##FUNKCIE
+def identity_check(feature,identic_points_check,identic_points_distance,feature_code,feature_type): #funkcia celkom zbytocna a mal som to dat dolu do skriptu, neva
+    points = []
+    identity_count = 0
+    geom = feature.GetGeometryRef()
+    if feature_type == 1:
+        for geom1 in geom:
+            geom = geom1
+    feature = None
+    for i in range(0, geom.GetPointCount()-1):
+        points.append(geom.GetPoint(i))
+    if identic_points_check == 1:
+        #hladanie identickosti medzi vsetkymi moznymi dvojicami bodov, okrem samych so sebou
+        for i in range(0,len(points)-1):
+            for j in range(i+1,len(points)):
+                if np.sqrt((points[i][0]-points[j][0])**2+(points[i][1]-points[j][1])**2+(points[i][2]-points[j][2])**2) < identic_points_distance:
+                    identity_count += 1
+        if identity_count == 1 and feature_code != None:
+            print("V prvku s kodom", feature_code,"sa v tesnej blizkosti nachadza", identity_count, "dvojica bodov.")
+        elif identity_count > 1 and identity_count < 5 and feature_code != None:
+            print("V prvku s kodom", feature_code,"sa v tesnej blizkosti nachadzaju", identity_count, "dvojice bodov.")
+        elif identity_count > 4 and feature_code != None:
+            print("V prvku s kodom", feature_code,"sa v tesnej blizkosti nachadza", identity_count, "dvojic bodov.")
+        elif identity_count > 0 and feature_code == None:
+            print("V prvku zistena identickost bodov. Zapni zapis kodov pre zistenie, o ktory prvok sa jedna.")
+        feature_ring = None
+    elif identic_points_check == 2:
+        feature_ring = None
+        for i in range(0,len(points)-1):
+            for j in range(i+1,len(points)):
+                if np.sqrt((points[i][0]-points[j][0])**2+(points[i][1]-points[j][1])**2+(points[i][2]-points[j][2])**2) < identic_points_distance:
+                    identity_count += 1
+                    points[i] = []
+                    break
+        if identity_count == 1 and feature_code != None:
+            print("V prvku s kodom", feature_code,"sa vymazal", identity_count, "bod.")
+        elif identity_count > 1 and identity_count < 5 and feature_code != None:
+            print("V prvku s kodom", feature_code,"sa vymazali", identity_count, "body.")
+        elif identity_count > 4 and feature_code != None:
+            print("V prvku s kodom", feature_code,"sa vymazalo", identity_count, "bodov.")
+        elif identity_count > 0 and feature_code == None:
+            print("V prvku s neznamym kodom zistena identickost bodov. Skor zamerane identicke body boli vymazane.")
+        if identity_count > 0:
+            if feature_type == 0:
+                feature_ring = ogr.Geometry(ogr.wkbLineString)  #pre liniu
+            elif feature_type == 1:
+                feature_ring = ogr.Geometry(ogr.wkbLinearRing)  #pre polygon (najprv ring)
+            i = None
+            for point_coor in points:
+                if point_coor == []:
+                    continue
+                feature_ring.AddPoint(point_coor[0], point_coor[1], point_coor[2])
+                if i == None:
+                    i = points.index(point_coor)
+            feature_ring.AddPoint(points[i][0], points[i][1], points[i][2])
+    return identity_count, feature_ring
+        
+
+
+#######################################################################
+## CESTY A NAZVY
 point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points_fixed.shp"   #cesta k bodovej vrstve
 output_folder = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\script_outds"  #cesta k priecinku, kde sa ulozi vysledok
 output_file = r"L1_objekty_hroby_update3"   #nazov vystupneho suboru
 line_file_suffix = r"_lines"    #pripona suboru so zvlast liniovymi prvkami
 point_file_suffix = r"_points"  #pripona suboru so zvlast bodovymi prvkami
- 
+
 ## NASTAVENIA
 feature_type = 1 #typ vysledku, 0 = linia, 1 = polygon
 line_ring = 1 #uzavretie linie, 1 = ano, 0 = nie (nepouzitelne pri polygone)
@@ -28,12 +90,15 @@ duplicite_feature = 0   #duplicitne prvky s totoznym kodom, 0 = ponechat vsetky 
 use_point_heights = 1   #zakomponovanie vysok bodov do prvkov, 0 = nie, 1 = ano
 save_lines = 0 #ulozit dvojbodove prvky do zvlast liniovej vrstvy, 1 = ano, 0 = nie
 save_points = 1 #ulozit jednobodove prvky do zvlast bodovej vrstvy, 1 = ano, 0 = nie
+identic_points_check = 2    #kontrola zamerania identickych bodov dvakrat vramci jedneho prvku (v premennych nastavenie identic_points_distance), 0 = bez kontroly, 1 = s kontrolou a oznamenim kodu prvku, kde je potvrdena identickost, 2 = s kontrolou, oznamenim a vymazanim prveho z dvojice identickych bodov (druhe meranie sa povazuje za spravne)
+
 
 ## PREMENNE
 include_features = ('OBJ','HROB')   #zadanie retazcov kodov/casti kodov prvkov, ktore budu vo vystupe. Napr. ('OBJ','HROB','Obj','H')
 exclude_features = ('VB','kera','FTG','SHL','bronz','Foto','foto','rez','SON','Tele')   #zadanie retazcov kodov/casti kodov prvkov, ktore nebudu vo vystupe. Napr. ('VB','kera','FTG','SHL','PROF')
 code_position = 5   #cislo atributu s kodmi bodov podla poradia
 new_field_name = "Kod"  #nazov noveho pola s popisom/kodom prvku
+identic_points_distance = 0.06 #vzdialenost medzi bodmi, do ktorej budu povazovane za identicke
 
 
 #############################################################################
@@ -42,6 +107,9 @@ new_field_name = "Kod"  #nazov noveho pola s popisom/kodom prvku
 #uistenie sa, ze v pripade polygonov je nastavene uzavretie linie
 if feature_type == 1:
     line_ring = 1
+#uistenie sa, ze ak je zapnute vyhladanie identickych bodov a nie je nastavena vzdialenost, tak sa defaultne nastavi
+if identic_points_check > 0 and identic_points_distance == 0:
+    identic_points_distance = 0.05
 
 
 # import bodovej vrstvy
@@ -366,6 +434,54 @@ for feature in outlayer:
         warn_count += 1
 if warn_count == 0:
     print("Geometria prvkov OK.")
+print("\n")
+
+
+##############################################################################################
+#KONTROLA IDENTICKOSTI BODOV V RAMCI UZAVRETYCH PRVKOV (POLYGONY A UZAVRETE LINIE)
+if identic_points_check > 0:
+    warn_count = 0
+    print("KONTROLA IDENTICKOSTI BODOV V RAMCI UZAVRETYCH PRVKOV")
+    feature_count = outlayer.GetFeatureCount()
+    for feature_number in range(0,feature_count):
+        feature = outlayer.GetFeature(feature_number)
+        if feature_description == 1:
+            feature_code = feature.GetField(0)
+        elif feature_description == 0:
+            feature_code = None
+        identity_count, feature_ring = identity_check(feature,identic_points_check,identic_points_distance,feature_code,feature_type)
+        warn_count += identity_count
+        if identic_points_check == 2:
+            if identity_count > 0:
+                #vymazanie povodnej feature a jej vytvorenie na konci zoznamu prvkov
+                outlayer.DeleteFeature(feature_number)
+                # vytvorenie linie
+                if feature_type == 0:
+                    # pridanie linie do feature a jej ulozenie do vystupnej vrstvy
+                    feature = ogr.Feature(outlayer.GetLayerDefn())
+                    feature.SetGeometry(feature_ring)
+                    outlayer.CreateFeature(feature)
+                    if feature_description == 1:
+                        feature.SetField(new_field_name, feature_code)   #priradenie kodu prvku
+                        outlayer.SetFeature(feature)    #update prvku vo vrstve
+                    feature_ring = feature = None
+                
+                # vytvorenie polygonu
+                if feature_type == 1:
+                    feature_polygon = ogr.Geometry(ogr.wkbPolygon)
+                    feature_polygon.AddGeometry(feature_ring)
+                    # pridanie polygonu do feature a jeho ulozenie do vystupnej vrstvy
+                    feature = ogr.Feature(outlayer.GetLayerDefn())
+                    feature.SetGeometry(feature_polygon)
+                    outlayer.CreateFeature(feature)
+                    if feature_description == 1:
+                        feature.SetField(new_field_name, feature_code)   #priradenie kodu prvku
+                        outlayer.SetFeature(feature)    #update prvku vo vrstve
+                    feature_polygon = feature = None
+
+    if warn_count == 0:
+        print("Identickost bodov nezistena.")
+
 
 #zavretie suboru
 outds = outds_lines = outds_points = outlayer = outlayer_lines = outlayer_points = None
