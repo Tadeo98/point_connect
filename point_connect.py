@@ -21,7 +21,6 @@ def identity_check(feature,identic_points_check,identic_points_distance,feature_
     if feature_type == 1:
         for geom1 in geom:
             geom = geom1
-    feature = None
     for i in range(0, geom.GetPointCount()-1):
         points.append(geom.GetPoint(i))
     if identic_points_check == 1:
@@ -41,12 +40,21 @@ def identity_check(feature,identic_points_check,identic_points_distance,feature_
         feature_ring = None
     elif identic_points_check == 2:
         feature_ring = None
+        # if geom.GetGeometryName() == "LINESTRING":
         for i in range(0,len(points)-1):
             for j in range(i+1,len(points)):
                 if np.sqrt((points[i][0]-points[j][0])**2+(points[i][1]-points[j][1])**2+(points[i][2]-points[j][2])**2) < identic_points_distance:
                     identity_count += 1
                     points[i] = []
                     break
+        # funguje trocha inak ako by malo
+        # elif geom.GetGeometryName() == "LINEARRING":
+        #     for i in reversed(range(1,len(points))):
+        #         for j in reversed(range(i-1)):
+        #             if np.sqrt((points[i][0]-points[j][0])**2+(points[i][1]-points[j][1])**2+(points[i][2]-points[j][2])**2) < identic_points_distance:
+        #                 identity_count += 1
+        #                 points[i] = []
+        #                 break
         if identity_count == 1 and feature_code != None:
             print("V prvku s kodom", feature_code,"sa vymazal", identity_count, "bod.")
         elif identity_count > 1 and identity_count < 5 and feature_code != None:
@@ -68,6 +76,7 @@ def identity_check(feature,identic_points_check,identic_points_distance,feature_
                 if i == None:
                     i = points.index(point_coor)
             feature_ring.AddPoint(points[i][0], points[i][1], points[i][2])
+    feature = None
     return identity_count, feature_ring
         
 
@@ -76,7 +85,7 @@ def identity_check(feature,identic_points_check,identic_points_distance,feature_
 ## CESTY A NAZVY
 point_layer_path = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\L1_points_fixed.shp"   #cesta k bodovej vrstve
 output_folder = r"D:\Praca\SAHI\Kosice\geodezia\plan_pre_mirku\data\script_outds"  #cesta k priecinku, kde sa ulozi vysledok
-output_file = r"L1_objekty_hroby_update3"   #nazov vystupneho suboru
+output_file = r"L1_objekty_hroby_identity_polygony"   #nazov vystupneho suboru
 line_file_suffix = r"_lines"    #pripona suboru so zvlast liniovymi prvkami
 point_file_suffix = r"_points"  #pripona suboru so zvlast bodovymi prvkami
 
